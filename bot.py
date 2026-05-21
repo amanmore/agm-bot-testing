@@ -8,7 +8,7 @@ from discord.ext import commands
 import aiohttp
 
 
-VERSION="202605211500"
+VERSION="202605212140"
 # Logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -376,7 +376,9 @@ async def monitor():
                 logger.info(f"New entry: {title}")
                 game = format_message(block["properties"])
                 await channel.send(
-                	embed=make_game_embed(game))
+                	embed=make_game_embed(game),
+                	view=GameView(game)
+                )
 
             save_seen(seen)
 
@@ -410,6 +412,54 @@ class ListingView(discord.ui.View):
         if self.current < len(self.chunks) - 1:
             self.current += 1
         await interaction.response.edit_message(embed=self.make_embed(), view=self)
+
+def split_message(text, limit=1900):
+    lines = text.splitlines(keepends=True)
+
+    chunks = []
+    current = ""
+
+    for line in lines:
+        if len(current) + len(line) > limit:
+            chunks.append(current)
+            current = line
+        else:
+            current += line
+
+    if current:
+        chunks.append(current)
+
+    return chunks
+
+class GameView(discord.ui.View):
+    def __init__(self, game):
+        super().__init__(timeout=None)
+        self.game = game
+
+    @discord.ui.button(
+        label="Copy Message",
+        style=discord.ButtonStyle.primary,
+        emoji="📋"
+    )
+    async def copy_message(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        message = self.game["message"]
+
+        chunks = split_message(message)
+
+        await interaction.response.send_message(
+            f"```{chunks[0]}```",
+            ephemeral=True
+        )
+
+        for chunk in chunks[1:]:
+            await interaction.followup.send(
+                f"```{chunk}```",
+                ephemeral=True
+            )
 
 @tree.command(name="list-games", description="List all games currently on Notion", guild=discord.Object(id=GUILD_ID))
 async def list_command(interaction: discord.Interaction):
@@ -463,6 +513,7 @@ async def get_command(interaction: discord.Interaction, number: int):
     
     await interaction.followup.send(
     	embed=make_game_embed(game),
+    	view=GameView(game),
     	ephemeral=True
     )
 
