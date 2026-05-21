@@ -45,7 +45,27 @@ SEATS_PAYLOAD = {
     "isMobile": False,
 }
 
+DATA_DIR = "data"
+
+os.makedirs(DATA_DIR, exist_ok=True)
+
+KEYS_FILE = f"{DATA_DIR}/keys.json"
+SEEN_FILE = f"{DATA_DIR}/seen_entries.json"
+
 monitor_task = None
+
+# --- Prep ---
+
+def load_keys():
+	try:
+		with open(KEYS_FILE, "r") as f:
+			return json.load(f)
+	except (FileNotFoundError, json.JSONDecodeError):
+		logger.error("keys.json missing or invalid — using empty keys")
+		return {}
+
+def get_keys():
+    return load_keys()
 
 # --- Notion Session ---
 
@@ -90,11 +110,6 @@ def get_date(props, key):
     except (KeyError, IndexError, TypeError):
         return {}
 
-def get_system(props):
-    system = get_text(props, "[zrW")
-    other_system = get_text(props, ";XHz")
-    return other_system if system == "Other" and other_system else system
-
 def format_date(date_str, time_str="00:00"):
     try:
         dt = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
@@ -112,67 +127,82 @@ def format_time(time_str, date_str="1970-01-01"):
         return dt_ist.strftime("%-I:%M %p")
     except (ValueError, AttributeError):
         return time_str
+        
+# --- Properties ---
+
+def parse_props(props):
+    K = get_keys()
+    system = get_text(props, K["system"]).strip()
+    other_system = get_text(props, K["other_system"]).strip()
+    price_type = get_text(props, K["price_type"]).strip()
+    start = get_date(props, K["start_date"])
+    end = get_date(props, K["end_date"])
+
+    return {
+        "title": get_text(props, K["title"]).strip(),
+        "dm": get_text(props, K["dm"]).strip(),
+        "system": (other_system if system == "Other" and other_system else system).strip(),
+        "game_type": get_text(props, K["game_type"]).strip(),
+        "session_type": get_text(props, K["session_type"]).strip(),
+        "exp_level": get_text(props, K["exp_level"]).strip(),
+        "level": get_text(props, K["level"]).strip(),
+        "location": (get_text(props, K["location"]) or "Online").strip(),
+        "campaign_link": get_text(props, K["campaign_link"]).strip(),
+        "description": "\n".join(
+            f"_{line.strip()}_" if line.strip() else ""
+            for line in get_text(props, K["description"]).split("\n")
+        ),
+        "art_credits": get_text(props, K["art_credits"]).strip(),
+        "content_warnings": ", ".join(
+            cw.strip() for cw in get_text(props, K["content_warnings"]).split(",")
+        ),
+        "classes_allowed": get_text(props, K["classes_allowed"]).strip(),
+        "species_allowed": get_text(props, K["species_allowed"]).strip(),
+        "other_notes": get_text(props, K["other_notes"]).strip(),
+        "cost": "FREE" if price_type == "Free" else f"INR {get_text(props, K['cost']).strip()}",
+        "session_date": format_date(start.get("start_date", ""), start.get("start_time", "00:00")),
+        "session_time": f"{format_time(start.get('start_time', ''), start.get('start_date', ''))} to {format_time(end.get('start_time', ''), end.get('start_date', ''))}",
+        "show": get_text(props, K["show"]).strip(),
+        "activate": get_text(props, K["activate"]).strip(),
+    }
 
 # --- Message Formatters ---
 
 def format_message(props):
-    title = get_text(props, "title")
-    dm = get_text(props, "SPnV")
-    system_display = get_system(props)
-    game_type = get_text(props, ">}g{")
-    session_type = get_text(props, "|fRn")
-    exp_level = get_text(props, "|}tH")
-    level = get_text(props, "mul~")
-    location = get_text(props, "Plyx") or "Online"
-    campaign_link = get_text(props, "]HCL")
-    description = get_text(props, "BjJV")
-    description = "\n".join(f"_{line.strip()}_" if line.strip() else "" for line in description.split("\n"))
-    art_credits = get_text(props, "J?h{")
-    content_warnings = get_text(props, "zjcl")
-    content_warnings = ", ".join(cw.strip() for cw in content_warnings.split(","))
-    classes_allowed = get_text(props, "{WSY")
-    species_allowed = get_text(props, "Ixus")
-    other_notes = get_text(props, "uXf_")
-    price_type = get_text(props, "IiTI")
-    cost = "FREE" if price_type == "Free" else f"INR {get_text(props, '|jEv')}"
+	p = parse_props(props)
+	
+	message = f"""*{p['title']}*
+_{p['game_type']} {p['session_type']}_ for *{p['exp_level']}*
+*{p['session_date']}*
+*{p['session_time']}*
 
-    start = get_date(props, "k|VL")
-    end = get_date(props, "To;]")
-    session_date = format_date(start.get("start_date", ""), start.get("start_time", "00:00"))
-    session_time = f"{format_time(start.get('start_time', ''), start.get('start_date', ''))} to {format_time(end.get('start_time', ''), end.get('start_date', ''))}"
+{p['description']}
 
-    message = f"""*{title}*
-_{game_type} {session_type}_ for *{exp_level}*
-*{session_date}*
-*{session_time}*
+*CW:* {p['content_warnings']}
 
-{description}
+*DM:* {p['dm']}
+*System:* {p['system']}
+*Level:* {p['level']}
+*Classes Allowed:* {p['classes_allowed']}
+*Species Allowed:* {p['species_allowed']}
+{f"\n*Other Notes:*\n{p['other_notes']}\n" if p['other_notes'] else ""}{f"\n*Campaign Link:* {p['campaign_link']}\n" if p['campaign_link'] else ""}
+*Session Type:* {p['game_type']} {p['session_type']}
+*Venue:* {p['location']}
+*Cost:* {p['cost']}
+*Date:* {p['session_date']}
+*Time:* {p['session_time']}
 
-*CW:* {content_warnings}
-
-*DM:* {dm}
-*System:* {system_display}
-*Level:* {level}
-*Classes Allowed:* {classes_allowed}
-*Species Allowed:* {species_allowed}
-{f"\n*Other Notes:*\n{other_notes}\n" if other_notes else ""}{f"\n*Campaign Link:* {campaign_link}\n" if campaign_link else ""}
-*Session Type:* {game_type} {session_type}
-*Venue:* {location}
-*Cost:* {cost}
-*Date:* {session_date}
-*Time:* {session_time}
-
-*Art Credits:* _{art_credits}_
+*Art Credits:* _{p['art_credits']}_
 
 *!! Registrations open at 9pm through the link below !!*
 https://adventuringguildmumbai.fillout.com/player-sign-up"""
-
-    return {
-    "title": title,
-    "dm": dm,
-    "date": session_date,
-    "time": session_time,
-    "message": message
+	
+	return {
+    	"title": p["title"],
+        "dm": p["dm"],
+        "date": p["session_date"],
+        "time": p["session_time"],
+        "message": message
     }
 
 def make_game_embed(game):
@@ -208,30 +238,20 @@ def make_game_embed(game):
     return embed
 
 def format_open_seats_message(props, open_seats):
-    title = get_text(props, "title")
-    game_type = get_text(props, ">}g{")
-    session_type = get_text(props, "|fRn")
-    exp_level = get_text(props, "|}tH")
-    location = get_text(props, "Plyx") or "Online"
-    system = get_system(props)
-
-    start = get_date(props, "k|VL")
-    end = get_date(props, "To;]")
-    session_date = format_date(start.get("start_date", ""), start.get("start_time", "00:00"))
-    session_time = f"{format_time(start.get('start_time', ''), start.get('start_date', ''))} to {format_time(end.get('start_time', ''), end.get('start_date', ''))}"
-
+    p = parse_props(props)
     seat_text = f"‼️ *{open_seats} seat available* ‼️" if open_seats == 1 else f"‼️ *{open_seats} seats available* ‼️"
 
-    return f"""*{title}*
-_{game_type} {session_type}_ for *{exp_level}*
-{session_date}
-{session_time}
-{location}
-*System: {system}*
+    return f"""*{p['title']}*
+_{p['game_type']} {p['session_type']}_ for *{p['exp_level']}*
+{p['session_date']}
+{p['session_time']}
+{p['location']}
+*System: {p['system']}*
 {seat_text}"""
 
 async def get_open_seats():
     raw_entries = await fetch_entries()
+    K = get_keys()
     game_entries = {
         block_id: block_data["value"]["value"]
         for block_id, block_data in raw_entries.items()
@@ -240,10 +260,10 @@ async def get_open_seats():
     }
 
     open_games = {
-        block_id: val
-        for block_id, val in game_entries.items()
-        if get_text(val["properties"], "u<SL") == "Yes"
-        and get_text(val["properties"], "?:QW") == "Yes"
+    	block_id: val
+    	for block_id, val in game_entries.items()
+    	if parse_props(val["properties"])["show"] == "Yes"
+    	and parse_props(val["properties"])["activate"] == "Yes"
     }
 
     seat_blocks = await fetch_seats()
@@ -251,8 +271,8 @@ async def get_open_seats():
     empty_seats_by_game = {}
     for seat_id, seat in seat_blocks.items():
         p = seat.get("properties", {})
-        game_id = p.get("]b~|", [[None, [[None, None]]]])[0][1][0][1]
-        if game_id and "^IxV" not in p:
+        game_id = p.get(K["seats_table_relation"], [[None, [[None, None]]]])[0][1][0][1]
+        if game_id and K["seats_player_relation"] not in p:
             empty_seats_by_game[game_id] = empty_seats_by_game.get(game_id, 0) + 1
 
     results = []
@@ -261,21 +281,21 @@ async def get_open_seats():
         if open_seats > 0:
             results.append((val, open_seats))
     
-    results.sort(key=lambda x: get_date(x[0]["properties"], "k|VL").get("start_date", ""))
+    results.sort(key=lambda x: get_date(x[0]["properties"], K["start_date"]).get("start_date", ""))
     return results
 
 # --- State Management ---
 
 def load_seen():
     try:
-        with open("seen_entries.json", "r") as f:
+        with open(SEEN_FILE, "r") as f:
             data = json.load(f)
             return set(data) if isinstance(data, list) else set()
     except (FileNotFoundError, json.JSONDecodeError, ValueError):
         return set()
 
 def save_seen(seen):
-    with open("seen_entries.json", "w") as f:
+    with open(SEEN_FILE, "w") as f:
         json.dump(list(seen), f)
 
 # --- Bot ---
@@ -403,10 +423,10 @@ async def list_command(interaction: discord.Interaction):
     }
     sorted_entries = sorted(entries.items(), key=lambda x: x[1].get("created_time", 0), reverse=True)
 
-    lines = [
-        f"{i+1}. {get_text(val['properties'], 'title')} | {get_text(val['properties'], '>}g{')} {get_text(val['properties'], '|fRn')} | {get_system(val['properties'])} | DM: {get_text(val['properties'], 'SPnV')}"
-        for i, (block_id, val) in enumerate(sorted_entries)
-    ]
+    lines = []
+    for i, (block_id, val) in enumerate(sorted_entries):
+    	p = parse_props(val['properties'])
+    	lines.append(f"{i+1}. {p['title']} | {p['game_type']} {p['session_type']} | {p['system']} | DM: {p['dm']}")
 
     chunks = []
     current = ""
