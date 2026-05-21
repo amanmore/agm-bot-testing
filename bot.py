@@ -1,11 +1,17 @@
-import requests
 import json
-import time
+import asyncio
+import os
+import logging
 from datetime import datetime, timezone, timedelta
 import discord
-import os
-import asyncio
 from discord.ext import commands
+import aiohttp
+
+
+VERSION="202605211500"
+# Logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Load environment variables
 DISCORD_TOKEN = os.environ["DISCORD_TOKEN"]
@@ -17,8 +23,6 @@ URL = "https://adventuring-guild-mumbai.notion.site/api/v3/queryCollection"
 HEADERS = {
     "Content-Type": "application/json",
     "notion-client-version": "23.13.20260422.1906",
-    "notion-audit-log-platform": "web",
-    "x-notion-active-user-header": "",
     "Origin": "https://adventuring-guild-mumbai.notion.site",
     "Referer": "https://adventuring-guild-mumbai.notion.site/2292380d35ca80418cf4c8a1588a19dc?v=2292380d35ca809490d0000c32aaf74d",
 }
@@ -41,29 +45,49 @@ SEATS_PAYLOAD = {
     "isMobile": False,
 }
 
-def fetch_entries():
-    response = requests.post(URL, json=PAYLOAD, headers=HEADERS)
-    return response.json()["recordMap"]["block"]
+monitor_task = None
 
-def fetch_seats():
-    response = requests.post(URL, json=SEATS_PAYLOAD, headers=HEADERS)
-    return {
-        block_id: block_data["value"]["value"]
-        for block_id, block_data in response.json()["recordMap"]["block"].items()
-        if block_data["value"]["value"].get("parent_table") == "collection"
-        and block_data["value"]["value"].get("type") == "page"
-    }
+# --- Notion Session ---
+
+notion_session: aiohttp.ClientSession = None
+
+async def get_session():
+    global notion_session
+    if notion_session is None or notion_session.closed:
+        notion_session = aiohttp.ClientSession()
+    return notion_session
+
+# --- Async Notion Fetch ---
+
+async def fetch_entries():
+    session = await get_session()
+    async with session.post(URL, json=PAYLOAD, headers=HEADERS) as resp:
+        data = await resp.json()
+        return data["recordMap"]["block"]
+
+async def fetch_seats():
+    session = await get_session()
+    async with session.post(URL, json=SEATS_PAYLOAD, headers=HEADERS) as resp:
+        data = await resp.json()
+        return {
+            block_id: block_data["value"]["value"]
+            for block_id, block_data in data["recordMap"]["block"].items()
+            if block_data["value"]["value"].get("parent_table") == "collection"
+            and block_data["value"]["value"].get("type") == "page"
+        }
+
+# --- Property Parsers ---
 
 def get_text(props, key):
     try:
         return props[key][0][0]
-    except:
+    except (KeyError, IndexError, TypeError):
         return ""
 
 def get_date(props, key):
     try:
         return props[key][0][1][0][1]
-    except:
+    except (KeyError, IndexError, TypeError):
         return {}
 
 def get_system(props):
@@ -77,7 +101,7 @@ def format_date(date_str, time_str="00:00"):
         dt_utc = dt.replace(tzinfo=timezone.utc)
         dt_ist = dt_utc + timedelta(hours=5, minutes=30)
         return dt_ist.strftime("%A, %B %-d, %Y")
-    except:
+    except (ValueError, AttributeError):
         return date_str
 
 def format_time(time_str, date_str="1970-01-01"):
@@ -86,8 +110,10 @@ def format_time(time_str, date_str="1970-01-01"):
         dt_utc = dt.replace(tzinfo=timezone.utc)
         dt_ist = dt_utc + timedelta(hours=5, minutes=30)
         return dt_ist.strftime("%-I:%M %p")
-    except:
+    except (ValueError, AttributeError):
         return time_str
+
+# --- Message Formatters ---
 
 def format_message(props):
     title = get_text(props, "title")
@@ -115,7 +141,7 @@ def format_message(props):
     session_date = format_date(start.get("start_date", ""), start.get("start_time", "00:00"))
     session_time = f"{format_time(start.get('start_time', ''), start.get('start_date', ''))} to {format_time(end.get('start_time', ''), end.get('start_date', ''))}"
 
-    return f"""*{title}*
+    message = f"""*{title}*
 _{game_type} {session_type}_ for *{exp_level}*
 *{session_date}*
 *{session_time}*
@@ -138,8 +164,48 @@ _{game_type} {session_type}_ for *{exp_level}*
 
 *Art Credits:* _{art_credits}_
 
-*!! Register by clicking the link below !!*
+*!! Registrations open at 9pm through the link below !!*
 https://adventuringguildmumbai.fillout.com/player-sign-up"""
+
+    return {
+    "title": title,
+    "dm": dm,
+    "date": session_date,
+    "time": session_time,
+    "message": message
+    }
+
+def make_game_embed(game):
+    message = game["message"]
+
+    if len(message) > 4000:
+        message = message[:3975] + "\n...[truncated]"
+
+    embed = discord.Embed(
+        title=game["title"],
+        description=f"```{message}```",
+        color=discord.Color.blue()
+    )
+
+    embed.add_field(
+        name="DM",
+        value=game["dm"] or "Unknown",
+        inline=True
+    )
+
+    embed.add_field(
+        name="Date",
+        value=game["date"] or "Unknown",
+        inline=True
+    )
+
+    embed.add_field(
+        name="Time",
+        value=game["time"] or "Unknown",
+        inline=True
+    )
+
+    return embed
 
 def format_open_seats_message(props, open_seats):
     title = get_text(props, "title")
@@ -154,7 +220,7 @@ def format_open_seats_message(props, open_seats):
     session_date = format_date(start.get("start_date", ""), start.get("start_time", "00:00"))
     session_time = f"{format_time(start.get('start_time', ''), start.get('start_date', ''))} to {format_time(end.get('start_time', ''), end.get('start_date', ''))}"
 
-    seat_text = f"‼️*{open_seats} seat available*‼️" if open_seats == 1 else f"‼️*{open_seats} seats available*‼️"
+    seat_text = f"‼️ *{open_seats} seat available* ‼️" if open_seats == 1 else f"‼️ *{open_seats} seats available* ‼️"
 
     return f"""*{title}*
 _{game_type} {session_type}_ for *{exp_level}*
@@ -164,10 +230,11 @@ _{game_type} {session_type}_ for *{exp_level}*
 *System: {system}*
 {seat_text}"""
 
-def get_open_seats():
+async def get_open_seats():
+    raw_entries = await fetch_entries()
     game_entries = {
         block_id: block_data["value"]["value"]
-        for block_id, block_data in fetch_entries().items()
+        for block_id, block_data in raw_entries.items()
         if block_data["value"]["value"].get("parent_table") == "collection"
         and block_data["value"]["value"].get("type") == "page"
     }
@@ -179,7 +246,7 @@ def get_open_seats():
         and get_text(val["properties"], "?:QW") == "Yes"
     }
 
-    seat_blocks = fetch_seats()
+    seat_blocks = await fetch_seats()
 
     empty_seats_by_game = {}
     for seat_id, seat in seat_blocks.items():
@@ -193,19 +260,25 @@ def get_open_seats():
         open_seats = empty_seats_by_game.get(game_id, 0)
         if open_seats > 0:
             results.append((val, open_seats))
-
+    
+    results.sort(key=lambda x: get_date(x[0]["properties"], "k|VL").get("start_date", ""))
     return results
+
+# --- State Management ---
 
 def load_seen():
     try:
         with open("seen_entries.json", "r") as f:
-            return set(json.load(f))
-    except FileNotFoundError:
+            data = json.load(f)
+            return set(data) if isinstance(data, list) else set()
+    except (FileNotFoundError, json.JSONDecodeError, ValueError):
         return set()
 
 def save_seen(seen):
     with open("seen_entries.json", "w") as f:
         json.dump(list(seen), f)
+
+# --- Bot ---
 
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="!", intents=intents)
@@ -213,11 +286,23 @@ tree = bot.tree
 
 @bot.event
 async def on_ready():
-    print(f"Logged in as {bot.user} (ID: {bot.user.id})", flush=True)
+    global notion_session, monitor_task
+    
+    if notion_session is None or notion_session.closed:
+    	notion_session = aiohttp.ClientSession()
+    
+    logger.info(f"AGM Bot v{VERSION} starting up...")
+    logger.info(f"Logged in as {bot.user} (ID: {bot.user.id})")
+    
     guild = discord.Object(id=GUILD_ID)
     synced = await bot.tree.sync(guild=guild)
-    print(f"Synced commands to guild: {[cmd.name for cmd in synced]}", flush=True)
-    bot.loop.create_task(monitor())
+    
+    logger.info(f"Synced commands to guild: {[cmd.name for cmd in synced]}")
+    if monitor_task is None or monitor_task.done():
+    	monitor_task = bot.loop.create_task(monitor())
+    	logger.info("Started monitor task.")
+    else:
+    	logger.info("Monitor task already running.")
 
 @tree.command(name="ping", description="Reply with Pong!", guild=discord.Object(id=GUILD_ID))
 async def ping(interaction: discord.Interaction):
@@ -225,52 +310,60 @@ async def ping(interaction: discord.Interaction):
 
 @tree.command(name="open-seats", description="Show all games with available seats", guild=discord.Object(id=GUILD_ID))
 async def open_seats_command(interaction: discord.Interaction):
-    results = get_open_seats()
+    await interaction.response.defer(ephemeral=True)
+    results = await get_open_seats()
     if not results:
-        await interaction.response.send_message("No games with open seats at the moment.", ephemeral=True)
+        await interaction.followup.send("No games with open seats at the moment.", ephemeral=True)
         return
     message = "\n\n".join(format_open_seats_message(val["properties"], open_seats) for val, open_seats in results)
-    await interaction.response.send_message(f"```{message}```", ephemeral=True)
+    await interaction.followup.send(f"```{message}```", ephemeral=True)
 
 async def monitor():
     await bot.wait_until_ready()
     channel = bot.get_channel(CHANNEL_ID)
-
     seen = load_seen()
 
     if not seen:
+        raw_entries = await fetch_entries()
         entries = {
             block_id: block_data["value"]["value"]
-            for block_id, block_data in fetch_entries().items()
+            for block_id, block_data in raw_entries.items()
             if block_data["value"]["value"].get("parent_table") == "collection"
             and block_data["value"]["value"].get("type") == "page"
         }
         seen = set(entries.keys())
         save_seen(seen)
-        print(f"First run — seeded {len(seen)} existing entries.")
-        return
+        logger.info(f"First run — seeded {len(seen)} existing entries.")
 
     while True:
-        entries = {
-            block_id: block_data["value"]["value"]
-            for block_id, block_data in fetch_entries().items()
-            if block_data["value"]["value"].get("parent_table") == "collection"
-            and block_data["value"]["value"].get("type") == "page"
-        }
+        try:
+            raw_entries = await fetch_entries()
+            entries = {
+                block_id: block_data["value"]["value"]
+                for block_id, block_data in raw_entries.items()
+                if block_data["value"]["value"].get("parent_table") == "collection"
+                and block_data["value"]["value"].get("type") == "page"
+            }
 
-        current_ids = set(entries.keys())
-        new_ids = current_ids - seen
+            current_ids = set(entries.keys())
+            new_ids = current_ids - seen
 
-        for block_id in new_ids:
-            block = entries[block_id]
-            title = block["properties"]["title"][0][0]
-            print(f"New entry: {title}")
-            message = format_message(block["properties"])
-            await channel.send(f"```{message}```")
-            seen.add(block_id)
+            for block_id in new_ids:
+                block = entries[block_id]
+                title = block["properties"]["title"][0][0]
+                seen.add(block_id)
+                save_seen(seen)
+                logger.info(f"New entry: {title}")
+                game = format_message(block["properties"])
+                await channel.send(
+                	embed=make_game_embed(game))
 
-        save_seen(seen)
-        await asyncio.sleep(300)
+            save_seen(seen)
+
+        except Exception as e:
+            logger.error(f"Error in monitor loop: {e}")
+
+        await asyncio.sleep(600)
 
 class ListingView(discord.ui.View):
     def __init__(self, chunks):
@@ -300,9 +393,11 @@ class ListingView(discord.ui.View):
 
 @tree.command(name="list-games", description="List all games currently on Notion", guild=discord.Object(id=GUILD_ID))
 async def list_command(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    raw_entries = await fetch_entries()
     entries = {
         block_id: block_data["value"]["value"]
-        for block_id, block_data in fetch_entries().items()
+        for block_id, block_data in raw_entries.items()
         if block_data["value"]["value"].get("parent_table") == "collection"
         and block_data["value"]["value"].get("type") == "page"
     }
@@ -325,23 +420,30 @@ async def list_command(interaction: discord.Interaction):
         chunks.append(current)
 
     view = ListingView(chunks)
-    await interaction.response.send_message(embed=view.make_embed(), view=view, ephemeral=True)
+    await interaction.followup.send(embed=view.make_embed(), view=view, ephemeral=True)
 
 @tree.command(name="get-game", description="Generate an announcement block for a specified game from the list", guild=discord.Object(id=GUILD_ID))
 async def get_command(interaction: discord.Interaction, number: int):
+    await interaction.response.defer(ephemeral=True)
+    raw_entries = await fetch_entries()
     entries = {
         block_id: block_data["value"]["value"]
-        for block_id, block_data in fetch_entries().items()
+        for block_id, block_data in raw_entries.items()
         if block_data["value"]["value"].get("parent_table") == "collection"
         and block_data["value"]["value"].get("type") == "page"
     }
     sorted_entries = sorted(entries.items(), key=lambda x: x[1].get("created_time", 0), reverse=True)
 
     if number < 1 or number > len(sorted_entries):
-        await interaction.response.send_message(f"Please enter a number between 1 and {len(sorted_entries)}.", ephemeral=True)
+        await interaction.followup.send(f"Please enter a number between 1 and {len(sorted_entries)}.", ephemeral=True)
         return
 
     block_id, val = sorted_entries[number - 1]
-    await interaction.response.send_message(f"```{format_message(val['properties'])}```", ephemeral=True)
+    game = format_message(val['properties'])
+    
+    await interaction.followup.send(
+    	embed=make_game_embed(game),
+    	ephemeral=True
+    )
 
 bot.run(DISCORD_TOKEN)
