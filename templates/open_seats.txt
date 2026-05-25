@@ -1,0 +1,11 @@
+*{title}*
+_{game_type} {session_type}_ for *{exp_level}*
+
+*{session_date}*
+*{session_time}*
+
+*DM:* {dm}
+*System:* {system}
+*Venue:* {location}
+
+{seat_text}

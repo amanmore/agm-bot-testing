@@ -1,0 +1,25 @@
+*{title}*
+_{game_type} {session_type}_ for *{exp_level}*
+*{session_date}*
+*{session_time}*
+
+{description}
+
+*CW:* {content_warnings}
+
+*DM:* {dm}
+*System:* {system}
+*Level:* {level}
+*Classes Allowed:* {classes_allowed}
+*Species Allowed:* {species_allowed}
+{optional_text}
+*Session Type:* {game_type} {session_type}
+*Venue:* {location}
+*Cost:* {cost}
+*Date:* {session_date}
+*Time:* {session_time}
+
+*Art Credits:* _{art_credits}_
+
+*!! Registrations open at 9pm through the link below !!*
+https://adventuringguildmumbai.fillout.com/player-sign-up

@@ -1,0 +1,84 @@
+title:
+  notion: Title
+  parser: title
+
+dm:
+  notion: DM Name
+  parser: rich_text
+
+system:
+  notion: System
+  parser: select
+
+game_type:
+  notion: Game Type
+  parser: select
+
+session_type:
+  notion: Session Type
+  parser: select
+
+exp_level:
+  notion: Experience Level
+  parser: select
+
+level:
+  notion: Level
+  parser: number
+
+location:
+  notion: Location
+  parser: rich_text
+  default: TBD
+
+campaign_link:
+  notion: Campaign Link
+  parser: url
+
+description:
+  notion: Description
+  parser: italic_rich_text
+
+art_credits:
+  notion: Art Credits
+  parser: rich_text
+
+content_warnings:
+  notion: Content Warnings
+  parser: multi_select
+
+classes_allowed:
+  notion: Classes Allowed
+  parser: rich_text
+
+species_allowed:
+  notion: Species Allowed
+  parser: rich_text
+
+other_notes:
+  notion: Other Notes
+  parser: rich_text
+
+price_type:
+  notion: Price Type
+  parser: select
+
+cost_number:
+  notion: Cost
+  parser: number
+
+start_date:
+  notion: Start Date
+  parser: date
+
+end_date:
+  notion: End Date
+  parser: date
+
+show:
+  notion: Show
+  parser: checkbox
+
+activate:
+  notion: Activate
+  parser: checkbox
