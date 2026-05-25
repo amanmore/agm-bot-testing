@@ -1,0 +1,13 @@
+version: "3.9"
+services:
+  agm-posts:
+    image: agm-posts
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: agm-posts
+    env_file:
+      - .env
+    volumes:
+      - /volume1/docker/agm-game-poster:/app
+    restart: unless-stopped
