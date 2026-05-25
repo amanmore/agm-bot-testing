@@ -9,5 +9,5 @@ services:
     env_file:
       - .env
     volumes:
-      - /volume1/docker/agm-game-poster:/app
+      - ./:/app
     restart: unless-stopped
