@@ -82,3 +82,19 @@ show:
 activate:
   notion: Activate
   parser: checkbox
+
+cover_url:
+  notion: Cover Art
+  parser: files
+  
+tsl:
+  notion: Tone, Style and Lethality
+  parser: rich_text
+
+experience:
+  notion: Experience Detailed
+  parser: rich_text
+  
+expectations:
+  notion: Table/Tool Expectation
+  parser: rich_text

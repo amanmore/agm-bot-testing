@@ -4,8 +4,10 @@ import logging
 import json
 import yaml
 import shutil
+import time
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
+from poster_generator import generate_poster
 
 from discord import app_commands
 from notion_client import AsyncClient
@@ -44,10 +46,13 @@ ROLE_TEMPLATE_EDITOR = int(os.environ["ROLE_TEMPLATE_EDITOR"])
 TEMPLATES = {}
 FIELD_MAP = {}
 FILES = {}
+HELP_TEXT = ""
 
 # --- Constants ---
 IST = timezone(timedelta(hours=5, minutes=30))
-SEEN_FILE = "seen_entries.json"
+SEEN_FILE = "data/seen_entries.json"
+ANNOUNCED_FILE = "data/announced_games.json"
+SCHEDULE_FILE = "data/scheduled_activations.json"
 
 # --- Notion Client ---
 notion = AsyncClient(auth=NOTION_TOKEN)
@@ -57,6 +62,8 @@ intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="!", intents=intents)
 tree = bot.tree
 monitor_task = None
+scheduler_task = None
+
 
 
 # --- File Discovery ---
@@ -145,6 +152,56 @@ def save_seen(seen):
     with open(SEEN_FILE, "w") as f:
         json.dump(list(seen), f)
 
+# --- Announcement Handling ---
+
+# --- Announced Games Persistence ---
+
+def load_announced():
+    try:
+        with open(ANNOUNCED_FILE, "r") as f:
+            data = json.load(f)
+            return set(data) if isinstance(data, list) else set()
+    except (
+        FileNotFoundError,
+        json.JSONDecodeError,
+        ValueError
+    ):
+        return set()
+
+
+def save_announced(announced):
+    os.makedirs(os.path.dirname(ANNOUNCED_FILE), exist_ok=True)
+
+    with open(ANNOUNCED_FILE, "w") as f:
+        json.dump(list(announced), f)
+
+
+# --- Activation Schedule Persistence ---
+
+def load_schedule():
+    try:
+        with open(SCHEDULE_FILE, "r") as f:
+            data = json.load(f)
+
+            return (
+                data if isinstance(data, list)
+                else []
+            )
+
+    except (
+        FileNotFoundError,
+        json.JSONDecodeError,
+        ValueError
+    ):
+        return []
+
+
+def save_schedule(schedule):
+    os.makedirs(os.path.dirname(SCHEDULE_FILE), exist_ok=True)
+
+    with open(SCHEDULE_FILE, "w") as f:
+        json.dump(schedule, f, indent=2)
+
 
 # --- Template Loading ---
 
@@ -177,6 +234,24 @@ def load_field_map():
     except Exception as e:
         logger.error(
             f"Failed to reload field map: {e}"
+        )
+        
+# --- Help Loader ---
+
+def load_help():
+    global HELP_TEXT
+
+    path = "help/help.txt"
+
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            HELP_TEXT = f.read()
+
+        logger.info("Help text reloaded.")
+
+    except Exception as e:
+        logger.error(
+            f"Failed to load help text: {e}"
         )
 
 
@@ -325,6 +400,31 @@ def get_url(prop):
     except (KeyError, TypeError):
         return ""
 
+def get_files(prop):
+    try:
+        files = prop.get("files", [])
+
+        if not files:
+            return ""
+
+        file = files[0]
+
+        if file["type"] == "external":
+            return file["external"]["url"]
+
+        if file["type"] == "file":
+            return file["file"]["url"]
+
+    except (
+        KeyError,
+        TypeError,
+        IndexError,
+        AttributeError
+    ):
+        pass
+
+    return ""
+
 
 def get_date(prop):
     try:
@@ -352,6 +452,25 @@ def format_time(date_string):
     dt = dt.astimezone(IST)
     return dt.strftime("%I:%M %p").lstrip("0")
 
+# --- Activation Scheduling Logic ---
+
+def get_next_activation_time():
+
+    now = datetime.now(IST)
+
+    activation_time = now.replace(
+        hour=21,
+        minute=0,
+        second=0,
+        microsecond=0
+    )
+
+    # Before 8 PM IST → same day 9 PM
+    if now.hour < 20:
+        return activation_time
+
+    # After 8 PM IST → next day 9 PM
+    return activation_time + timedelta(days=1)
 
 # --- Fetch Data Function ---
 
@@ -379,6 +498,7 @@ PARSERS = {
     "checkbox": get_checkbox,
     "url": get_url,
     "date": get_date,
+    "files": get_files,
 }
 
 
@@ -470,7 +590,7 @@ def parse_props(props, seatdata):
     if parsed["price_type"] == "Free":
         parsed["cost"] = "FREE"
     elif parsed["price_type"] == "Paid (Transport Fee only)":
-        parsed["cost"] = "Free, but costs for transporting physical assets to and from the location will be shared"
+        parsed["cost"] = "Transport Costs Shared"
     else:
         parsed["cost"] = (f"INR {parsed['cost_number']}")
 
@@ -504,10 +624,26 @@ def format_message(p):
 
     optional_sections = []
 
-    if p["other_notes"]:
+    if p["other_notes"] or p["tsl"] or p["experience"] or p["expectations"]:
         optional_sections.append(
-            f"\n*Other Notes:*\n{p['other_notes']}\n"
+            f"\n*Other Notes:*"
         )
+        if len(p["experience"]) > 3:
+        	optional_sections.append(
+        		f"{p['experience']}\n"
+        	)
+        if len(p["expectations"]) > 3:
+        	optional_sections.append(
+        		f"{p['expectations']}\n"
+        	)
+        if len(p["tsl"]) > 3:
+        	optional_sections.append(
+        		f"{p['tsl']}\n"
+        	)
+        if len(p["other_notes"]) > 3:
+        	optional_sections.append(
+        		f"{p['other_notes']}\n"
+        	)
 
     if p["campaign_link"]:
         optional_sections.append(
@@ -570,6 +706,24 @@ def format_open_seats_message(p):
         )
 
 
+def format_activation_announcement(games):
+    line_template = TEMPLATES["activation_game_line"]
+
+    lines = []
+
+    for game in games:
+        lines.append(
+            line_template.format(**game)
+        )
+
+    games_list = "\n\n".join(lines)
+
+    template = TEMPLATES["activation_announcement"]
+
+    return template.format(
+        games_list=games_list
+    )
+
 # --- Games List Generation ---
 async def games_list():
     games, seats_by_id = await fetch_data()
@@ -621,7 +775,6 @@ async def monitor():
         seen = {game["id"] for game in games}
         save_seen(seen)
         logger.info(f"First run — seeded {len(seen)} existing entries.")
-        return
 
     while True:
         try:
@@ -637,16 +790,73 @@ async def monitor():
                     message = format_message(parsed)
                     await channel.send(
                         embed=make_game_embed(parsed, message),
-                        view=CopyView(message)
+                        view=CopyView(game["id"], parsed, message, parsed["cover_url"])
                     )
                     seen.add(game["id"])
                     save_seen(seen)
 
-        except Exception as e:
-            logger.info(f"Error in monitor loop: {e}")
+        except Exception:
+            logger.exception("Error in monitor loop")
 
         await asyncio.sleep(600)
 
+async def activation_scheduler():
+    await bot.wait_until_ready()
+    channel = bot.get_channel(CHANNEL_ID)
+    while True:
+        try:
+            now = datetime.now(IST)
+            schedule = load_schedule()
+            due = []
+            remaining = []
+
+            for entry in schedule:
+                activate_at = datetime.fromisoformat(
+                    entry["activate_at"]
+                )
+                if now >= activate_at:
+                    due.append(entry)
+                else:
+                    remaining.append(entry)
+
+            if due:
+                games, seats_by_id = await fetch_data()
+                game_lookup = {
+                    game["id"]: game
+                    for game in games
+                }
+
+                activated_games = []
+                for entry in due:
+                    game = game_lookup.get(
+                        entry["game_id"]
+                    )
+                    if not game:
+                        continue
+                    parsed = parse_props(
+                        game["properties"],
+                        seats_by_id
+                    )
+                    activated_games.append(parsed)
+
+                if activated_games:
+                    message = format_activation_announcement(
+                        activated_games
+                    )
+                    await channel.send(f"```{message}```")
+                    logger.info(
+                        f"Posted activation message for "
+                        f"{len(activated_games)} game(s)"
+                    )
+
+            save_schedule(remaining)
+
+        except Exception:
+            logger.exception(
+                "Error in activation scheduler"
+            )
+
+        await asyncio.sleep(60)
 
 class ListingView(discord.ui.View):
     def __init__(self, chunks):
@@ -688,22 +898,119 @@ def make_game_embed(parsed, message):
     embed.add_field(name="DM", value=parsed["dm"] or "Unknown", inline=True)
     embed.add_field(name="Date", value=parsed["session_date"] or "Unknown", inline=True)
     embed.add_field(name="Time", value=parsed["session_time"] or "Unknown", inline=True)
+    if parsed.get("cover_url"):
+        embed.set_image(url=parsed["cover_url"])
+
     return embed
 
 
 class CopyView(discord.ui.View):
-    def __init__(self, message: str):
-        super().__init__()
+
+    def __init__(self, game_id: str, parsed: dict, message: str, cover_url: str = ""):
+        super().__init__(timeout=None)
+
+        self.game_id = game_id
+        self.parsed = parsed
         self.message = message
+        self.cover_url = cover_url
 
     @discord.ui.button(label="Copy Text", style=discord.ButtonStyle.secondary)
     async def copy_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message(f"```{self.message}```", ephemeral=True)
+        chunks = chunk_text(self.message, limit=1900)
+        await interaction.response.defer(ephemeral=True)
+        for chunk in chunks:
+            await interaction.followup.send(f"```{chunk}```", ephemeral=True)
+        if self.cover_url:
+            await interaction.followup.send(self.cover_url, ephemeral=True)
 
+    @discord.ui.button(label="Announce", style=discord.ButtonStyle.success)
+    async def announce_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        announced = load_announced()
+        if self.game_id in announced:
+            await interaction.response.send_message(
+                "This game has already been announced.",
+                ephemeral=True
+            )
+            return
+        announced.add(self.game_id)
+        save_announced(announced)
+        await interaction.response.send_message(
+            (
+                f"Game marked as announced.\n"
+                f"Simulated: Show = True"
+            ),
+            ephemeral=True
+        )
+
+    @discord.ui.button(label="Announce & Schedule", style=discord.ButtonStyle.primary)
+    async def schedule_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        announced = load_announced()
+        if self.game_id in announced:
+            await interaction.response.send_message(
+                "This game has already been announced.",
+                ephemeral=True
+            )
+            return
+
+        announced.add(self.game_id)
+        save_announced(announced)
+        activate_at = get_next_activation_time()
+        schedule = load_schedule()
+        schedule.append({
+            "game_id": self.game_id,
+            "activate_at": activate_at.isoformat()
+        })
+        save_schedule(schedule)
+        formatted_time = activate_at.strftime(
+            "%A, %B %d at %I:%M %p IST"
+        )
+        await interaction.response.send_message(
+            (
+                "Game marked as announced.\n"
+                "Simulated: Show = True\n\n"
+                f"Registration scheduled for:\n"
+                f"{formatted_time}"
+            ),
+            ephemeral=True
+        )
+
+    @discord.ui.button(label="Unannounce (DEBUG)", style=discord.ButtonStyle.danger)
+    async def unannounce_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        announced = load_announced()
+        if self.game_id not in announced:
+            await interaction.response.send_message(
+                "Game is not marked announced.",
+                ephemeral=True
+            )
+            return
+        announced.remove(self.game_id)
+        save_announced(announced)
+        schedule = load_schedule()
+        schedule = [
+            s for s in schedule
+            if s["game_id"] != self.game_id
+        ]
+        save_schedule(schedule)
+        await interaction.response.send_message(
+            (
+                "Announcement state cleared.\n"
+                "Removed any scheduled activation."
+            ),
+            ephemeral=True
+        )
+
+async def watchdog():
+    while True:
+        start = asyncio.get_running_loop().time()
+        await asyncio.sleep(1)
+        delta = (asyncio.get_running_loop().time() - start)
+
+        if delta > 2:
+            logger.warning(f"Event loop blocked for {delta:.2f}s")
 
 @bot.event
 async def on_ready():
-    global monitor_task
+    global monitor_task, scheduler_task
     logger.info(f"AGM Bot v{VERSION} starting up...")
     logger.info(f"Logged in as {bot.user} (ID: {bot.user.id})")
     guild = discord.Object(id=GUILD_ID)
@@ -711,17 +1018,37 @@ async def on_ready():
     logger.info(f"Synced commands to guild: {[cmd.name for cmd in synced]}")
     load_field_map()
     load_templates()
+    load_help()
+    bot.loop.create_task(watchdog())
     refresh_files()
     if monitor_task is None or monitor_task.done():
         monitor_task = bot.loop.create_task(monitor())
         logger.info("Started monitor task.")
     else:
         logger.info("Monitor task already running.")
+    
+    if scheduler_task is None or scheduler_task.done():
+    	scheduler_task = bot.loop.create_task(activation_scheduler())
+    	logger.info("Started activation scheduler task.")
 
 
 @tree.command(name="ping", description="Reply with Pong!", guild=discord.Object(id=GUILD_ID))
 async def ping(interaction: discord.Interaction):
     await interaction.response.send_message("Pong!", ephemeral=True)
+
+@tree.command(name="create-poster", description="Generate a poster for a specific game", guild=discord.Object(id=GUILD_ID))
+async def create_poster(interaction: discord.Interaction, number: int, teaser: str, offset_x: int = None, offset_y: int = None):
+    await interaction.response.defer(ephemeral=True)
+    games, seats_by_id = await fetch_data()
+    if number < 1 or number > len(games):
+        await interaction.followup.send(f"Please enter a number between 1 and {len(games)}.", ephemeral=True)
+        return
+    game = games[number - 1]
+    parsed = parse_props(game["properties"], seats_by_id)
+    teaser = teaser.replace("|", "\n")
+
+    path = generate_poster(parsed, teaser, offset_x, offset_y)
+    await interaction.followup.send(file=discord.File(path), ephemeral=True)
 
 
 @tree.command(name="list-games", description="List all games currently on Notion", guild=discord.Object(id=GUILD_ID))
@@ -746,15 +1073,19 @@ async def get_command(interaction: discord.Interaction, number: int):
     message = format_message(parsed)
     await interaction.followup.send(
         embed=make_game_embed(parsed, message),
-        view=CopyView(message),
+        view=CopyView(game["id"], parsed, message, parsed["cover_url"]),
         ephemeral=True
     )
 
 
 @tree.command(name="open-seats", description="Show all games with available seats", guild=discord.Object(id=GUILD_ID))
 async def open_seats_command(interaction: discord.Interaction):
+    start = time.monotonic()
+    logger.info("open-seats invoked")
     await interaction.response.defer(ephemeral=True)
+    logger.info(f"Deferred after {time.monotonic() - start:.2f}s")
     result = await fetch_open_seats()
+    logger.info(f"Fetched seats after {time.monotonic() - start:.2f}s")
     if not result:
         await interaction.followup.send("No games with open seats at the moment.", ephemeral=True)
         return
@@ -777,6 +1108,7 @@ async def reload_config(interaction):
         return
     load_templates()
     load_field_map()
+    load_help()
     user = interaction.user
     logger.info(f"{user} (ID: {user.id}) reloaded config.")
     await interaction.response.send_message(
@@ -948,5 +1280,105 @@ async def upload_file(
         if os.path.exists(temp_path):
             os.remove(temp_path)
 
+@tree.command(name="get-props", description="Show parsed template properties for a game", guild=discord.Object(id=GUILD_ID))
+async def get_props_command(
+        interaction: discord.Interaction,
+        number: int
+):
+    await interaction.response.defer(ephemeral=True)
+
+    games, seats_by_id = await fetch_data()
+
+    if number < 1 or number > len(games):
+        await interaction.followup.send(
+            f"Please enter a number between 1 and {len(games)}.",
+            ephemeral=True
+        )
+        return
+
+    game = games[number - 1]
+
+    parsed = parse_props(
+        game["properties"],
+        seats_by_id
+    )
+
+    lines = []
+
+    for key, value in parsed.items():
+
+        value_type = type(value).__name__
+
+        if isinstance(value, dict):
+            value = json.dumps(
+                value,
+                indent=2,
+                default=str
+            )
+
+        lines.append(
+            f"{{{key}}} (type: {value_type}) (len: {len(str(value))}) = {value}"
+        )
+
+    output = "\n".join(lines)
+
+    chunks = chunk_text(output)
+
+    for chunk in chunks:
+        await interaction.followup.send(
+            f"```{chunk}```",
+            ephemeral=True
+        )
+
+@tree.command(name="help", description="Show AGM Bot help", guild=discord.Object(id=GUILD_ID))
+async def help_command(
+        interaction: discord.Interaction
+):
+
+    chunks = chunk_text(
+        HELP_TEXT,
+        limit=1975
+    )
+
+    await interaction.response.defer(
+        ephemeral=True
+    )
+
+    for chunk in chunks:
+        await interaction.followup.send(
+            f"```{chunk}```",
+            ephemeral=True
+        )
+        
+@bot.event
+async def on_disconnect():
+    logger.warning("Disconnected from Discord")
+
+@bot.event
+async def on_connect():
+    logger.info("Connected to Discord")
+
+@bot.event
+async def on_resumed():
+    logger.info("Discord session resumed")
+    
+from discord.errors import NotFound
+
+@tree.error
+async def on_app_command_error(
+    interaction: discord.Interaction,
+    error: app_commands.AppCommandError
+):
+    original = getattr(error, "original", error)
+
+    if isinstance(original, NotFound):
+        logger.warning(
+            "Interaction expired before response "
+            "(likely reconnect/network issue)"
+        )
+        return
+
+    logger.exception("Unhandled app command error", exc_info=error)
 
 bot.run(DISCORD_TOKEN)
+

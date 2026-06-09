@@ -1,0 +1,157 @@
+AGM BOT HELP
+=============
+
+OVERVIEW
+--------
+This bot manages AGM game listings and announcement formatting
+using Notion databases and editable templates.
+
+Most users only need:
+- /list-games
+- /get-game
+- /open-seats
+
+Admins and template editors additionally use:
+- /download-file
+- /upload-file
+- /reload-config
+
+
+COMMON TASKS
+============
+
+VIEW ALL CURRENT GAMES
+----------------------
+/list-games
+
+Shows all currently available games from Notion.
+
+Each game includes:
+- Game Number
+- Title
+- DM
+- System
+- Location
+- Date
+- Time
+- Open Seats
+
+Use the game number with other commands.
+
+
+GENERATE A GAME ANNOUNCEMENT
+----------------------------
+/get-game <number>
+
+Example:
+/get-game 3
+
+This:
+- Retrieves the game from Notion
+- Parses all configured fields
+- Applies the announcement template
+- Displays the final formatted announcement
+- Provides a copy button
+
+
+VIEW TEMPLATE VARIABLES
+-----------------------
+/get-props <number>
+
+Example:
+/get-props 3
+
+Displays all parsed template variables and values.
+
+Useful for:
+- Template editing
+- Debugging
+- Discovering available placeholders
+
+Example output:
+{title} (str) = Curse of Strahd
+{dm} (str) = Alice
+{open_seats} (int) = 3
+
+
+SHOW OPEN SEATS
+---------------
+/open-seats
+
+Displays all currently active games with open seats.
+
+
+EDITING TEMPLATES
+=================
+
+DOWNLOAD A FILE
+---------------
+/download-file
+
+Downloads a template or config file.
+
+Available files depend on permissions.
+
+
+UPLOAD A FILE
+-------------
+/upload-file
+
+Uploads and replaces a template or config file.
+
+The bot:
+- validates YAML files
+- creates timestamped backups
+- reloads config automatically
+
+Backups are stored beside the original file.
+
+
+RELOAD CONFIG
+-------------
+/reload-config
+
+Reloads:
+- templates
+- field mappings
+- help documentation
+
+Usually not needed after /upload-file.
+
+
+FILE TYPES
+===========
+
+templates/
+-----------
+Contains announcement formatting templates.
+
+Examples:
+- announcement.txt
+- open_seats.txt
+
+
+config/
+--------
+Contains YAML parser mappings.
+
+Main file:
+- field_map.yaml
+
+
+help/
+-----
+Contains bot documentation.
+
+
+NOTES
+=====
+
+- All slash commands are ephemeral by default.
+- Templates use Python format placeholders:
+    {title}
+    {dm}
+    {session_date}
+
+- Unknown placeholders will cause template formatting errors.
+- Uploaded files are backed up automatically.
