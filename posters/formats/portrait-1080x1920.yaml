@@ -1,0 +1,306 @@
+format: Portrait 1080x1920
+
+canvas:
+  width: 1080
+  height: 1920
+  image_offset_x: 0
+  image_offset_y: 0
+
+defaults:
+  colour: '#FFFFFF'
+  min_size: 40
+  line_spacing: 8
+  align: center
+  valign: middle
+
+layouts:
+
+  Instagram Story Safe:
+
+    elements:
+      - title
+      - type
+      - datetime
+      - dm
+      - credits
+
+    definitions:
+
+      title:
+        value: '{title}'
+        font: fonts/Blue_Cashews.otf
+        size: 260
+        x: 80
+        y: 260
+        width: 920
+        height: 420
+      type:
+        value: 'A {game_type} {system} {session_type}'
+        font: fonts/Gilroy-Bold.ttf
+        size: 75
+        x: 80
+        y: 1250
+        width: 920
+        height: 70
+      datetime:
+        value: '{poster_datetime}'
+        font: fonts/Gilroy-Bold.ttf
+        size: 65
+        x: 80
+        y: 1330
+        width: 920
+        height: 70
+      dm:
+        value: 'DM: {dm}'
+        font: fonts/Gilroy-Bold.ttf
+        size: 80
+        colour: '#0DBCDA'
+        x: 80
+        y: 1420
+        width: 920
+        height: 70
+      credits:
+        value: 'Art: {art_credits}'
+        font: fonts/Gilroy-Bold.ttf
+        size: 24
+        colour: '#BBBBBB'
+        align: right
+        valign: bottom
+        x: 40
+        y: 1780
+        width: 1000
+        height: 50
+
+  Instagram Story Full:
+
+    elements:
+      - title
+      - type
+      - datetime
+      - dm
+      - credits
+
+    definitions:
+
+      title:
+        value: '{title}'
+        font: fonts/Blue_Cashews.otf
+        size: 320
+        x: 50
+        y: 120
+        width: 980
+        height: 520
+      type:
+        value: 'A {game_type} {system} {session_type}'
+        font: fonts/Gilroy-Bold.ttf
+        size: 85
+        x: 80
+        y: 1450
+        width: 920
+        height: 80
+      datetime:
+        value: '{poster_datetime}'
+        font: fonts/Gilroy-Bold.ttf
+        size: 70
+        x: 80
+        y: 1540
+        width: 920
+        height: 70
+      dm:
+        value: 'DM: {dm}'
+        font: fonts/Gilroy-Bold.ttf
+        size: 90
+        colour: '#0DBCDA'
+        x: 80
+        y: 1630
+        width: 920
+        height: 80
+      credits:
+        value: 'Art: {art_credits}'
+        font: fonts/Gilroy-Bold.ttf
+        size: 24
+        colour: '#BBBBBB'
+        align: right
+        valign: bottom
+        x: 40
+        y: 1840
+        width: 1000
+        height: 50
+
+  Full Portrait:
+
+    elements:
+      - title
+      - type
+      - datetime
+      - dm
+      - credits
+
+    definitions:
+
+      title:
+        value: '{title}'
+        font: fonts/Blue_Cashews.otf
+        size: 420
+        x: 40
+        y: 40
+        width: 1000
+        height: 600
+      type:
+        value: 'A {game_type} {system} {session_type}'
+        font: fonts/Gilroy-Bold.ttf
+        size: 90
+        x: 80
+        y: 1540
+        width: 920
+        height: 80
+      datetime:
+        value: '{poster_datetime}'
+        font: fonts/Gilroy-Bold.ttf
+        size: 80
+        x: 80
+        y: 1630
+        width: 920
+        height: 80
+      dm:
+        value: 'DM: {dm}'
+        font: fonts/Gilroy-Bold.ttf
+        size: 100
+        colour: '#0DBCDA'
+        x: 80
+        y: 1720
+        width: 920
+        height: 90
+      credits:
+        value: 'Art: {art_credits}'
+        font: fonts/Gilroy-Bold.ttf
+        size: 28
+        colour: '#BBBBBB'
+        align: right
+        valign: bottom
+        x: 40
+        y: 1840
+        width: 1000
+        height: 50
+
+  Full Portrait Teaser:
+
+    elements:
+      - title
+      - type
+      - teaser
+      - datetime
+      - dm
+      - credits
+
+    definitions:
+
+      title:
+        value: '{title}'
+        font: fonts/Blue_Cashews.otf
+        size: 320
+        x: 60
+        y: 60
+        width: 960
+        height: 420
+      type:
+        value: 'A {game_type} {system} {session_type}'
+        font: fonts/Gilroy-Bold.ttf
+        size: 80
+        x: 80
+        y: 520
+        width: 920
+        height: 80
+      teaser:
+        value: '{teaser}'
+        font: fonts/Gilroy-Regular.ttf
+        size: 65
+        min_size: 24
+        x: 120
+        y: 1250
+        width: 840
+        height: 260
+      datetime:
+        value: '{poster_datetime}'
+        font: fonts/Gilroy-Bold.ttf
+        size: 70
+        x: 80
+        y: 1560
+        width: 920
+        height: 70
+      dm:
+        value: 'DM: {dm}'
+        font: fonts/Gilroy-Bold.ttf
+        size: 85
+        colour: '#0DBCDA'
+        x: 80
+        y: 1650
+        width: 920
+        height: 80
+      credits:
+        value: 'Art: {art_credits}'
+        font: fonts/Gilroy-Bold.ttf
+        size: 28
+        colour: '#BBBBBB'
+        align: right
+        valign: bottom
+        x: 40
+        y: 1840
+        width: 1000
+        height: 50
+
+  Cinematic Poster:
+
+    elements:
+      - title
+      - type
+      - dm
+      - datetime
+      - credits
+
+    definitions:
+
+      title:
+        value: '{title}'
+        font: fonts/Blue_Cashews.otf
+        size: 520
+        x: 40
+        y: 60
+        width: 1000
+        height: 900
+      type:
+        value: '{system}'
+        font: fonts/Gilroy-Bold.ttf
+        size: 90
+        x: 80
+        y: 1480
+        width: 920
+        height: 80
+      dm:
+        value: 'DM: {dm}'
+        font: fonts/Gilroy-Bold.ttf
+        size: 90
+        colour: '#0DBCDA'
+        x: 80
+        y: 1580
+        width: 920
+        height: 80
+      datetime:
+        value: '{poster_datetime}'
+        font: fonts/Gilroy-Bold.ttf
+        size: 70
+        x: 80
+        y: 1680
+        width: 920
+        height: 80
+      credits:
+        value: 'Art: {art_credits}'
+        font: fonts/Gilroy-Bold.ttf
+        size: 28
+        colour: '#BBBBBB'
+        align: right
+        valign: bottom
+        x: 40
+        y: 1840
+        width: 1000
+        height: 50

@@ -1,62 +1,77 @@
 AGM BOT HELP
-=============
 
 OVERVIEW
---------
-This bot manages AGM game listings and announcement formatting
-using Notion databases and editable templates.
+
+This bot manages AGM game listings, announcements, registration scheduling,
+and poster generation using Notion databases, editable templates, and poster assets.
 
 Most users only need:
-- /list-games
-- /get-game
-- /open-seats
+
+* /list-games
+* /get-game
+* /open-seats
+
+Poster editors additionally use:
+
+* /create-poster
+* /list-poster-assets
+* /download-layout
+* /download-font
+* /download-art
+* /upload-poster_config
+* /upload-font
+* /upload-art
+* /delete-poster-asset
 
 Admins and template editors additionally use:
-- /download-file
-- /upload-file
-- /reload-config
 
+* /download-file
+* /upload-file
+* /reload-config
 
 COMMON TASKS
-============
 
 VIEW ALL CURRENT GAMES
-----------------------
+
 /list-games
 
 Shows all currently available games from Notion.
 
 Each game includes:
-- Game Number
-- Title
-- DM
-- System
-- Location
-- Date
-- Time
-- Open Seats
+
+* Game Number
+* Title
+* DM
+* System
+* Location
+* Date
+* Time
+* Open Seats
 
 Use the game number with other commands.
 
-
 GENERATE A GAME ANNOUNCEMENT
-----------------------------
-/get-game <number>
+
+/get-game 
 
 Example:
 /get-game 3
 
 This:
-- Retrieves the game from Notion
-- Parses all configured fields
-- Applies the announcement template
-- Displays the final formatted announcement
-- Provides a copy button
 
+* Retrieves the game from Notion
+* Parses all configured fields
+* Applies the announcement template
+* Displays the final formatted announcement
+* Provides buttons to:
+    * Copy the announcement text
+    * Mark the game announced (Simulated)
+    * Schedule registration activation (Simulated)
+    * Clear announcement state (debug)
 
 VIEW TEMPLATE VARIABLES
------------------------
-/get-props <number>
+
+/get-props 
 
 Example:
 /get-props 3
@@ -64,94 +79,204 @@ Example:
 Displays all parsed template variables and values.
 
 Useful for:
-- Template editing
-- Debugging
-- Discovering available placeholders
+
+* Template editing
+* Debugging
+* Discovering available placeholders
 
 Example output:
 {title} (str) = Curse of Strahd
 {dm} (str) = Alice
 {open_seats} (int) = 3
 
-
 SHOW OPEN SEATS
----------------
+
 /open-seats
 
 Displays all currently active games with open seats.
 
+POSTER GENERATION
+
+CREATE A POSTER
+
+/create-poster
+
+Example:
+/create-poster number:3 preset:standard
+
+Generates a poster using the selected layout.
+
+Optional controls:
+
+* teaser text
+* image offsets
+* image scaling
+* artwork override
+* title override
+
+Useful for generating social media graphics directly from game data.
+
+LIST AVAILABLE POSTER ASSETS
+
+/list-poster-assets
+
+Shows all available:
+
+* Layouts
+* Fonts
+* Artwork collections
+
+DOWNLOAD A POSTER ASSET
+
+Commands:
+
+* /download-layout
+* /download-font
+* /download-art
+
+Downloads the selected asset.
+
+UPLOAD A POSTER CONFIG
+
+/upload-poster_config
+
+Uploads:
+
+* Poster layouts
+* general.yaml configuration
+
+The bot validates the configuration before loading it.
+
+UPLOAD A FONT
+
+/upload-font
+
+Uploads a font for poster generation.
+
+Supported formats depend on Pillow/font support on the host system.
+
+UPLOAD ARTWORK
+
+/upload-art
+
+Uploads artwork into a system-specific collection.
+
+Required fields:
+
+* System
+* Title
+* Artist
+* Image
+
+Supported formats:
+
+* JPG
+* JPEG
+* PNG
+* WEBP
+
+Artwork filenames are automatically generated from:
+Title + Artist
+
+DELETE A POSTER ASSET
+
+/delete-poster-asset
+
+Deletes:
+
+* Fonts
+* Layouts
+* Artwork collections
 
 EDITING TEMPLATES
-=================
 
 DOWNLOAD A FILE
----------------
+
 /download-file
 
 Downloads a template or config file.
 
 Available files depend on permissions.
 
-
 UPLOAD A FILE
--------------
+
 /upload-file
 
 Uploads and replaces a template or config file.
 
 The bot:
-- validates YAML files
-- creates timestamped backups
-- reloads config automatically
+
+* validates YAML files
+* creates timestamped backups
+* reloads configuration automatically
 
 Backups are stored beside the original file.
 
-
 RELOAD CONFIG
--------------
+
 /reload-config
 
 Reloads:
-- templates
-- field mappings
-- help documentation
 
-Usually not needed after /upload-file.
+* templates
+* field mappings
+* help documentation
+* poster configuration
 
+Usually not needed after uploads.
 
 FILE TYPES
-===========
 
 templates/
------------
+
 Contains announcement formatting templates.
 
 Examples:
-- announcement.txt
-- open_seats.txt
 
+* announcement.txt
+* open_seats.txt
+* activation_announcement.txt
+* activation_game_line.txt
 
 config/
---------
-Contains YAML parser mappings.
+
+Contains YAML parser mappings and bot configuration.
 
 Main file:
-- field_map.yaml
 
+* field_map.yaml
 
 help/
------
+
 Contains bot documentation.
 
+POSTER ASSETS
+
+Managed through poster commands.
+
+Includes:
+
+* Layouts
+* Fonts
+* Artwork
+* General poster configuration
+
+SYSTEM COMMANDS
+
+/ping
+
+Simple bot connectivity test.
 
 NOTES
-=====
 
-- All slash commands are ephemeral by default.
-- Templates use Python format placeholders:
+* Most slash commands respond ephemerally.
+* Templates use Python format placeholders:
     {title}
     {dm}
     {session_date}
-
-- Unknown placeholders will cause template formatting errors.
-- Uploaded files are backed up automatically.
+    {open_seats}
+* Unknown placeholders will cause template formatting errors.
+* Uploaded files are backed up automatically.
+* Poster assets are reloaded automatically after upload.
+* Registration scheduling uses the bots activation scheduler.
+* Artwork filenames are sanitized automatically before saving.

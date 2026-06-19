@@ -1,4 +1,5 @@
 import os
+import re
 import asyncio
 import logging
 import json
@@ -7,7 +8,30 @@ import shutil
 import time
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
-from poster_generator import generate_poster
+from poster_generator2 import (
+    generate_poster,
+    reload_poster_configs,
+
+    update_poster_layouts,
+    update_poster_art,
+
+    save_font,
+    delete_font,
+    get_font_file,
+    get_font_choices,
+
+    save_art,
+    delete_art,
+    get_art_file,
+    get_art_systems,
+
+    save_format,
+    list_formats,
+    delete_format,
+    get_format_file,
+
+    save_general_config
+)
 
 from discord import app_commands
 from notion_client import AsyncClient
@@ -43,6 +67,7 @@ TABLES_DATA_SOURCE_ID = os.environ["TABLES_DATA_SOURCE_ID"]
 SEATS_DATA_SOURCE_ID = os.environ["SEATS_DATA_SOURCE_ID"]
 ROLE_ADMIN = int(os.environ["ROLE_ADMIN"])
 ROLE_TEMPLATE_EDITOR = int(os.environ["ROLE_TEMPLATE_EDITOR"])
+ROLE_POSTER_EDITOR = int(os.environ["ROLE_POSTER_EDITOR"])
 TEMPLATES = {}
 FIELD_MAP = {}
 FILES = {}
@@ -72,11 +97,11 @@ def discover_files():
     for filename in os.listdir("templates"):
         if filename.endswith(".txt") and not filename.endswith(".bak"):
             key = filename.removesuffix(".txt")
-            files[key] = (f"templates/{filename}")
+            files[key] = f"templates/{filename}"
     for filename in os.listdir("config"):
         if filename.endswith(".yaml") and not filename.endswith(".bak"):
             key = filename.removesuffix(".yaml")
-            files[key] = (f"config/{filename}")
+            files[key] = f"config/{filename}"
     return files
 
 
@@ -108,6 +133,113 @@ async def file_autocomplete(
 
     return valid_files[:25]
 
+async def poster_layout_autocomplete(
+    interaction: discord.Interaction,
+    current: str
+):
+    return [
+        app_commands.Choice(name=x, value=x)
+        for x in update_poster_layouts()
+        if current.lower() in x.lower()
+    ][:25]
+    
+async def poster_format_autocomplete(
+    interaction: discord.Interaction,
+    current: str
+):
+    return [
+        app_commands.Choice(name=x, value=x)
+        for x in list_formats()
+        if current.lower() in x.lower()
+    ][:25]
+
+async def poster_font_autocomplete(
+    interaction: discord.Interaction,
+    current: str
+):
+    return [
+        app_commands.Choice(name=x, value=x)
+        for x in get_font_choices()
+        if current.lower() in x.lower()
+    ][:25]
+
+
+async def poster_art_autocomplete(
+    interaction: discord.Interaction,
+    current: str
+):
+    return [
+        app_commands.Choice(name=x, value=x)
+        for x in update_poster_art()
+        if current.lower() in x.lower()
+    ][:25]
+
+async def art_system_autocomplete(
+    interaction: discord.Interaction,
+    current: str
+):
+
+    current = current.lower()
+
+    return [
+        app_commands.Choice(
+            name=system,
+            value=system
+        )
+        for system in get_art_systems()
+        if current in system.lower()
+    ][:25]
+
+async def poster_asset_type_autocomplete(
+    interaction: discord.Interaction,
+    current: str
+):
+    asset_types = [
+        "font",
+        "layout",
+        "art"
+    ]
+
+    return [
+        app_commands.Choice(
+            name=x,
+            value=x
+        )
+        for x in asset_types
+        if current.lower() in x.lower()
+    ]
+
+async def poster_asset_autocomplete(
+    interaction: discord.Interaction,
+    current: str
+):
+    asset_type = None
+
+    try:
+        asset_type = interaction.namespace.asset_type
+    except AttributeError:
+        pass
+
+    if asset_type == "font":
+        values = get_font_choices()
+
+    elif asset_type == "layout":
+        values = list_formats()
+
+    elif asset_type == "art":
+        values = update_poster_art()
+
+    else:
+        values = []
+
+    return [
+        app_commands.Choice(
+            name=x,
+            value=x
+        )
+        for x in values
+        if current.lower() in x.lower()
+    ][:25]
 
 # --- Role Filtering ---
 def has_file_permission(
@@ -135,6 +267,16 @@ def has_file_permission(
 
     return False
 
+def has_poster_permission(interaction):
+    user_roles = {
+        role.id
+        for role in interaction.user.roles
+    }
+
+    return (
+        ROLE_ADMIN in user_roles
+        or ROLE_POSTER_EDITOR in user_roles
+    )
 
 # --- Seen Game Handling ---
 
@@ -317,6 +459,27 @@ def escape_braces(text):
         .replace("}", "}}")
     )
 
+def safe_filename(text):
+    if not text:
+        return "untitled"
+
+    # Replace filesystem-invalid characters
+    text = re.sub(
+        r'[<>:"/\\|?*\x00-\x1f]',
+        "-",
+        text
+    )
+
+    # Collapse whitespace
+    text = re.sub(r"\s+", " ", text)
+
+    # Collapse repeated hyphens
+    text = re.sub(r"-{2,}", "-", text)
+
+    # Remove leading/trailing junk
+    text = text.strip(" .-")
+
+    return text or "untitled"
 
 def clean_text(text):
     if not text:
@@ -450,7 +613,27 @@ def format_time(date_string):
         date_string.replace("Z", "+00:00")
     )
     dt = dt.astimezone(IST)
+    
+    if dt.minute == 0:
+        return dt.strftime("%I %p").lstrip("0")
+        
     return dt.strftime("%I:%M %p").lstrip("0")
+
+def format_poster_datetime(date_string):
+    if not date_string:
+        return "Unknown Date"
+
+    dt = datetime.fromisoformat(
+        date_string.replace("Z", "+00:00")
+    )
+
+    dt = dt.astimezone(IST)
+
+    return (
+        f"{dt.strftime('%A, %B')} "
+        f"{dt.day}, at "
+        f"{format_time(date_string)}"
+    )
 
 # --- Activation Scheduling Logic ---
 
@@ -500,7 +683,6 @@ PARSERS = {
     "date": get_date,
     "files": get_files,
 }
-
 
 # --- Seat Parsing Function ---
 
@@ -592,7 +774,7 @@ def parse_props(props, seatdata):
     elif parsed["price_type"] == "Paid (Transport Fee only)":
         parsed["cost"] = "Transport Costs Shared"
     else:
-        parsed["cost"] = (f"INR {parsed['cost_number']}")
+        parsed["cost"] = f"INR {parsed['cost_number']}"
 
     start = parsed["start_date"]
     end = parsed["end_date"]
@@ -608,6 +790,11 @@ def parse_props(props, seatdata):
         f"{format_time(end['start'])}"
         if start and end
         else "Unknown Time"
+    )
+    
+    parsed["poster_datetime"] = (
+        format_poster_datetime(start["start"])
+        if start else "Unknown Date"
     )
 
     parsed["open_seats"] = get_open_seats(
@@ -629,21 +816,21 @@ def format_message(p):
             f"\n*Other Notes:*"
         )
         if len(p["experience"]) > 3:
-        	optional_sections.append(
-        		f"{p['experience']}\n"
-        	)
+            optional_sections.append(
+                f"{p['experience']}\n"
+            )
         if len(p["expectations"]) > 3:
-        	optional_sections.append(
-        		f"{p['expectations']}\n"
-        	)
+            optional_sections.append(
+                f"{p['expectations']}\n"
+            )
         if len(p["tsl"]) > 3:
-        	optional_sections.append(
-        		f"{p['tsl']}\n"
-        	)
+            optional_sections.append(
+                f"{p['tsl']}\n"
+            )
         if len(p["other_notes"]) > 3:
-        	optional_sections.append(
-        		f"{p['other_notes']}\n"
-        	)
+            optional_sections.append(
+                f"{p['other_notes']}\n"
+            )
 
     if p["campaign_link"]:
         optional_sections.append(
@@ -1021,6 +1208,7 @@ async def on_ready():
     load_help()
     bot.loop.create_task(watchdog())
     refresh_files()
+    reload_poster_configs()
     if monitor_task is None or monitor_task.done():
         monitor_task = bot.loop.create_task(monitor())
         logger.info("Started monitor task.")
@@ -1028,8 +1216,8 @@ async def on_ready():
         logger.info("Monitor task already running.")
     
     if scheduler_task is None or scheduler_task.done():
-    	scheduler_task = bot.loop.create_task(activation_scheduler())
-    	logger.info("Started activation scheduler task.")
+        scheduler_task = bot.loop.create_task(activation_scheduler())
+        logger.info("Started activation scheduler task.")
 
 
 @tree.command(name="ping", description="Reply with Pong!", guild=discord.Object(id=GUILD_ID))
@@ -1037,7 +1225,21 @@ async def ping(interaction: discord.Interaction):
     await interaction.response.send_message("Pong!", ephemeral=True)
 
 @tree.command(name="create-poster", description="Generate a poster for a specific game", guild=discord.Object(id=GUILD_ID))
-async def create_poster(interaction: discord.Interaction, number: int, teaser: str, offset_x: int = None, offset_y: int = None):
+@app_commands.describe(
+    number="Game number from /list-games",
+    preset="Poster Layout",
+    teaser="Optional teaser text",
+    offset_x="Horizontal image shift (-100 to 100, negative means camera pan left)",
+    offset_y="Vertical image shift (-100 to 100, negative means camera tilt up)",
+    image_scale="Scale Image pre-offset (1.0-2.0)",
+    art_override="Override artwork with a specific image from collection",
+    title_override="Override title to correct errors or replace unsupported glyphs",
+)
+@app_commands.autocomplete(
+    preset = poster_layout_autocomplete,
+    art_override = poster_art_autocomplete
+)
+async def create_poster(interaction: discord.Interaction, number: int, preset: str, teaser: str = "", offset_x: int | None = None, offset_y: int | None = None, image_scale: float = 1.0, art_override: str | None = None, title_override: str = ""):
     await interaction.response.defer(ephemeral=True)
     games, seats_by_id = await fetch_data()
     if number < 1 or number > len(games):
@@ -1046,8 +1248,11 @@ async def create_poster(interaction: discord.Interaction, number: int, teaser: s
     game = games[number - 1]
     parsed = parse_props(game["properties"], seats_by_id)
     teaser = teaser.replace("|", "\n")
+    parsed["original_title"] = parsed["title"]
+    if title_override:
+    	parsed["title"] = title_override
 
-    path = generate_poster(parsed, teaser, offset_x, offset_y)
+    path = generate_poster(parsed, preset, teaser, offset_x, offset_y, image_scale, art_override)
     await interaction.followup.send(file=discord.File(path), ephemeral=True)
 
 
@@ -1109,6 +1314,7 @@ async def reload_config(interaction):
     load_templates()
     load_field_map()
     load_help()
+    reload_poster_configs()
     user = interaction.user
     logger.info(f"{user} (ID: {user.id}) reloaded config.")
     await interaction.response.send_message(
@@ -1254,6 +1460,8 @@ async def upload_file(
         # Reload caches
         load_templates()
         load_field_map()
+        load_help()
+        reload_poster_configs()
 
         logger.info(
             f"{interaction.user} (ID: {interaction.user.id}) "
@@ -1279,6 +1487,287 @@ async def upload_file(
     finally:
         if os.path.exists(temp_path):
             os.remove(temp_path)
+
+@tree.command(
+    name="upload-poster_config",
+    description="Upload a poster layout or general.yaml file",
+    guild=discord.Object(id=GUILD_ID)
+)
+async def upload_poster_config(
+    interaction: discord.Interaction,
+    attachment: discord.Attachment
+):
+    if not has_poster_permission(interaction):
+        await interaction.response.send_message(
+            "You do not have permission.",
+            ephemeral=True
+        )
+        return
+
+    try:
+        data = await attachment.read()
+
+        filename = attachment.filename.lower()
+
+        if not filename.endswith(".yaml"):
+            raise ValueError(
+                "Invalid file format. Only .yaml files are allowed."
+            )
+
+        if filename == "general.yaml":
+            save_general_config(data)
+        else:
+            save_format(
+                attachment.filename,
+                data,
+                FIELD_MAP
+            )
+
+        reload_poster_configs()
+
+        await interaction.response.send_message(
+            f"Uploaded layout `{attachment.filename}`",
+            ephemeral=True
+        )
+
+    except Exception as e:
+        await interaction.response.send_message(
+            f"Upload failed:\n```{e}```",
+            ephemeral=True
+        )
+
+@tree.command(
+    name="upload-font",
+    description="Upload a poster font",
+    guild=discord.Object(id=GUILD_ID)
+)
+async def upload_font(
+    interaction: discord.Interaction,
+    attachment: discord.Attachment
+):
+    if not has_poster_permission(interaction):
+        await interaction.response.send_message(
+            "You do not have permission.",
+            ephemeral=True
+        )
+        return
+
+    try:
+        data = await attachment.read()
+
+        save_font(
+            attachment.filename,
+            data
+        )
+
+        reload_poster_configs()
+
+        await interaction.response.send_message(
+            f"Uploaded font `{attachment.filename}`",
+            ephemeral=True
+        )
+
+    except Exception as e:
+        await interaction.response.send_message(
+            f"Upload failed:\n```{e}```",
+            ephemeral=True
+        )
+
+@tree.command(
+    name="download-format",
+    description="Download a poster format",
+    guild=discord.Object(id=GUILD_ID)
+)
+@app_commands.autocomplete(
+    format=poster_format_autocomplete
+)
+async def download_format(
+    interaction: discord.Interaction,
+    format: str
+):
+    if not has_poster_permission(interaction):
+        await interaction.response.send_message(
+            "You do not have permission.",
+            ephemeral=True
+        )
+        return
+
+    path = get_format_file(format)
+
+    if not path:
+        await interaction.response.send_message(
+            "Format not found.",
+            ephemeral=True
+        )
+        return
+
+    await interaction.response.send_message(
+        file=discord.File(path),
+        ephemeral=True
+    )
+
+@tree.command(
+    name="download-font",
+    description="Download a poster font",
+    guild=discord.Object(id=GUILD_ID)
+)
+@app_commands.autocomplete(
+    font=poster_font_autocomplete
+)
+async def download_font(
+    interaction: discord.Interaction,
+    font: str
+):
+    if not has_poster_permission(interaction):
+        await interaction.response.send_message(
+            "You do not have permission.",
+            ephemeral=True
+        )
+        return
+
+    path = get_font_file(font)
+
+    if not path:
+        await interaction.response.send_message(
+            "Font not found.",
+            ephemeral=True
+        )
+        return
+
+    await interaction.response.send_message(
+        file=discord.File(path),
+        ephemeral=True
+    )
+
+@tree.command(
+    name="download-art",
+    description="Download artwork",
+    guild=discord.Object(id=GUILD_ID)
+)
+@app_commands.autocomplete(
+    art=poster_art_autocomplete
+)
+async def download_art(
+    interaction: discord.Interaction,
+    art: str
+):
+    if not has_poster_permission(interaction):
+        await interaction.response.send_message(
+            "You do not have permission.",
+            ephemeral=True
+        )
+        return
+
+    path = get_art_file(art)
+
+    if not path:
+        await interaction.response.send_message(
+            "Art not found.",
+            ephemeral=True
+        )
+        return
+
+    await interaction.response.send_message(
+        file=discord.File(path),
+        ephemeral=True
+    )
+
+# --------------------------------------------------
+# Upload Art
+# --------------------------------------------------
+
+@tree.command(
+    name="upload-art",
+    description="Upload artwork for poster generation.",
+    guild=discord.Object(id=GUILD_ID)
+)
+@app_commands.describe(
+    system="System folder",
+    title="Artwork title",
+    artist="Artist credit",
+    image="Image file"
+)
+@app_commands.autocomplete(
+    system=art_system_autocomplete
+)
+async def upload_art(
+    interaction: discord.Interaction,
+    system: str,
+    title: str,
+    artist: str,
+    image: discord.Attachment
+):
+
+    await interaction.response.defer(
+        ephemeral=True
+    )
+
+    try:
+
+        if not image.content_type:
+            raise ValueError(
+                "Attachment has no content type."
+            )
+
+        if not image.content_type.startswith(
+            "image/"
+        ):
+            raise ValueError(
+                "File must be an image."
+            )
+
+        ext = Path(
+            image.filename
+        ).suffix.lower()
+
+        if ext not in (
+            ".jpg",
+            ".jpeg",
+            ".png",
+            ".webp"
+        ):
+            raise ValueError(
+                "Supported formats: jpg, jpeg, png, webp"
+            )
+
+        data = await image.read()
+
+        safe_title = safe_filename(title)
+
+        safe_artist = safe_filename(artist)
+
+        filename = (
+            f"{safe_title}"
+            f"__"
+            f"{safe_artist}"
+            f"{ext}"
+        )
+
+        path = save_art(
+            system=system.strip(),
+            filename=filename,
+            data=data
+        )
+
+        await interaction.followup.send(
+            (
+                f"Artwork uploaded.\n"
+                f"System: `{system}`\n"
+                f"File: `{path.name}`"
+            ),
+            ephemeral=True
+        )
+
+    except Exception as e:
+
+        logger.exception(
+            "Artwork upload failed"
+        )
+
+        await interaction.followup.send(
+            f"Upload failed: {e}",
+            ephemeral=True
+        )
 
 @tree.command(name="get-props", description="Show parsed template properties for a game", guild=discord.Object(id=GUILD_ID))
 async def get_props_command(
@@ -1327,6 +1816,87 @@ async def get_props_command(
     for chunk in chunks:
         await interaction.followup.send(
             f"```{chunk}```",
+            ephemeral=True
+        )
+
+@tree.command(name="list-poster-assets", description="Show all available assets useable in posters", guild=discord.Object(id=GUILD_ID))
+async def list_poster_assets(
+    interaction: discord.Interaction
+):
+    layouts = "\n".join(update_poster_layouts())
+    fonts = "\n".join(get_font_choices())
+    art = "\n".join(update_poster_art())
+
+    message = (f"Layouts:\n{layouts}\n\nFonts:\n{fonts}\n\nArt:\n{art}")
+
+    chunks = chunk_text(
+        message,
+        limit=1975
+    )
+
+    await interaction.response.defer(
+        ephemeral=True
+    )
+
+    for chunk in chunks:
+        await interaction.followup.send(
+            f"```{chunk}```",
+            ephemeral=True
+        )
+
+@tree.command(
+    name="delete-poster-asset",
+    description="Delete a poster asset",
+    guild=discord.Object(id=GUILD_ID)
+)
+@app_commands.describe(
+    asset_type="Type of asset",
+    asset="Asset to delete"
+)
+@app_commands.autocomplete(
+    asset_type=poster_asset_type_autocomplete,
+    asset=poster_asset_autocomplete
+)
+async def delete_poster_asset(
+    interaction: discord.Interaction,
+    asset_type: str,
+    asset: str
+):
+    if not has_poster_permission(interaction):
+        await interaction.response.send_message(
+            "You do not have permission.",
+            ephemeral=True
+        )
+        return
+
+    try:
+
+        if asset_type == "font":
+            delete_font(asset)
+
+        elif asset_type == "layout":
+            delete_format(asset)
+
+        elif asset_type == "art":
+            delete_art(asset)
+
+        else:
+            await interaction.response.send_message(
+                "Invalid asset type.",
+                ephemeral=True
+            )
+            return
+
+        reload_poster_configs()
+
+        await interaction.response.send_message(
+            f"Deleted {asset_type}: `{asset}`",
+            ephemeral=True
+        )
+
+    except Exception as e:
+        await interaction.response.send_message(
+            f"Delete failed:\n```{e}```",
             ephemeral=True
         )
 

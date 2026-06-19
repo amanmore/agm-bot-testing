@@ -1,0 +1,147 @@
+format: Portrait 1080x1350
+
+canvas:
+  width: 1080
+  height: 1350
+  image_offset_x: 0
+  image_offset_y: 0
+
+defaults:
+  colour: "#FFFFFF"
+  min_size: 40
+  line_spacing: 8
+  align: center
+  valign: middle
+
+layouts:
+
+  Instagram Teaser:
+
+    elements:
+      - title
+      - type
+      - datetime
+      - dm
+      - teaser
+      - credits
+
+    definitions:
+
+      title:
+        value: "{title}"
+        font: fonts/Blue_Cashews.otf
+        size: 180
+        x: 60
+        y: 80
+        width: 960
+        height: 220
+
+      type:
+        value: "A {game_type} {system} {session_type}"
+        font: fonts/Gilroy-Bold.ttf
+        size: 90
+        x: 60
+        y: 340
+        width: 960
+        height: 100
+
+      datetime:
+        value: "{poster_datetime}"
+        font: fonts/Gilroy-Bold.ttf
+        size: 70
+        x: 60
+        y: 980
+        width: 960
+        height: 60
+
+      dm:
+        value: "DM: {dm}"
+        font: fonts/Gilroy-Bold.ttf
+        size: 70
+        colour: "#0DBCDA"
+        x: 60
+        y: 1060
+        width: 960
+        height: 60
+
+      teaser:
+        value: "{teaser}"
+        font: fonts/Gilroy-Regular.ttf
+        size: 48
+        min_size: 18
+        x: 110
+        y: 1140
+        width: 860
+        height: 120
+
+      credits:
+        value: "Art: {art_credits}"
+        font: fonts/Gilroy-Bold.ttf
+        size: 28
+        colour: "#BBBBBB"
+        align: right
+        valign: bottom
+        x: 30
+        y: 1270
+        width: 1020
+        height: 60
+
+  Instagram Standard:
+
+    elements:
+      - title
+      - type
+      - datetime
+      - dm
+      - credits
+
+    definitions:
+
+      title:
+        value: "{title}"
+        font: fonts/Blue_Cashews.otf
+        size: 280
+        x: 60
+        y: 80
+        width: 960
+        height: 380
+
+      type:
+        value: "A {game_type} {system} {session_type}"
+        font: fonts/Gilroy-Bold.ttf
+        size: 90
+        x: 60
+        y: 980
+        width: 960
+        height: 80
+
+      datetime:
+        value: "{poster_datetime}"
+        font: fonts/Gilroy-Bold.ttf
+        size: 70
+        x: 60
+        y: 1070
+        width: 960
+        height: 60
+
+      dm:
+        value: "DM: {dm}"
+        font: fonts/Gilroy-Bold.ttf
+        size: 95
+        colour: "#0DBCDA"
+        x: 60
+        y: 1150
+        width: 960
+        height: 60
+
+      credits:
+        value: "Art: {art_credits}"
+        font: fonts/Gilroy-Bold.ttf
+        size: 28
+        colour: "#BBBBBB"
+        align: right
+        valign: bottom
+        x: 30
+        y: 1270
+        width: 1020
+        height: 60

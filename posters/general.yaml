@@ -1,0 +1,9 @@
+background:
+  blur_radius: 3
+  darken_opacity: 0.5
+
+shadow:
+  enabled: true
+  x: 2
+  y: 2
+  colour: [0, 0, 0, 180]

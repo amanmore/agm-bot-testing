@@ -1,0 +1,176 @@
+format: Banner 1500x500
+
+canvas:
+  width: 1500
+  height: 500
+  image_offset_x: 0
+  image_offset_y: 0
+
+defaults:
+  colour: "#FFFFFF"
+  min_size: 24
+  line_spacing: 6
+  align: center
+  valign: middle
+
+layouts:
+
+  Standard:
+
+    elements:
+      - title
+      - type
+      - datetime
+      - dm
+      - credits
+
+    definitions:
+
+      title:
+        value: "{title}"
+        font: fonts/Blue_Cashews.otf
+        size: 240
+        x: 120
+        y: 30
+        width: 1260
+        height: 200
+
+      type:
+        value: "{system}"
+        font: fonts/Gilroy-Bold.ttf
+        size: 55
+        x: 120
+        y: 250
+        width: 1260
+        height: 45
+
+      datetime:
+        value: "{poster_datetime}"
+        font: fonts/Gilroy-Bold.ttf
+        size: 50
+        x: 120
+        y: 310
+        width: 1260
+        height: 45
+
+      dm:
+        value: "DM: {dm}"
+        font: fonts/Gilroy-Bold.ttf
+        size: 60
+        colour: "#0DBCDA"
+        x: 120
+        y: 370
+        width: 1260
+        height: 45
+
+      credits:
+        value: "Art: {art_credits}"
+        font: fonts/Gilroy-Bold.ttf
+        size: 24
+        colour: "#BBBBBB"
+        align: right
+        valign: bottom
+        x: 20
+        y: 455
+        width: 1460
+        height: 30
+
+  Minimal:
+
+    elements:
+      - title
+      - datetime
+      - dm
+      - credits
+
+    definitions:
+
+      title:
+        value: "{title}"
+        font: fonts/Blue_Cashews.otf
+        size: 280
+        x: 120
+        y: 40
+        width: 1260
+        height: 180
+
+      datetime:
+        value: "{poster_datetime}"
+        font: fonts/Gilroy-Bold.ttf
+        size: 60
+        x: 120
+        y: 280
+        width: 1260
+        height: 50
+
+      dm:
+        value: "DM: {dm}"
+        font: fonts/Gilroy-Bold.ttf
+        size: 65
+        colour: "#0DBCDA"
+        x: 120
+        y: 350
+        width: 1260
+        height: 50
+
+      credits:
+        value: "Art: {art_credits}"
+        font: fonts/Gilroy-Bold.ttf
+        size: 24
+        colour: "#BBBBBB"
+        align: right
+        valign: bottom
+        x: 20
+        y: 455
+        width: 1460
+        height: 30
+
+  Discord:
+
+    elements:
+      - title
+      - datetime
+      - dm
+      - credits
+
+    definitions:
+
+      title:
+        value: "{title}"
+        font: fonts/Blue_Cashews.otf
+        size: 260
+        x: 120
+        y: 50
+        width: 1260
+        height: 190
+
+      datetime:
+        value: "{poster_datetime}"
+        font: fonts/Gilroy-Bold.ttf
+        size: 55
+        x: 120
+        y: 290
+        width: 1260
+        height: 45
+
+      dm:
+        value: "DM: {dm}"
+        font: fonts/Gilroy-Bold.ttf
+        size: 70
+        colour: "#0DBCDA"
+        x: 120
+        y: 360
+        width: 1260
+        height: 45
+
+      credits:
+        value: "Art: {art_credits}"
+        font: fonts/Gilroy-Bold.ttf
+        size: 24
+        colour: "#BBBBBB"
+        align: right
+        valign: bottom
+        x: 20
+        y: 455
+        width: 1460
+        height: 30
